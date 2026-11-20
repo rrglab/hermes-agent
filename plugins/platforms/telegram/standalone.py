@@ -135,7 +135,9 @@ def _telegram_bot(token, extra=None):
     proxy = None
     strict_egress = (
         bool(extra.get("proxy_url"))
-        or bool(os.getenv("TELEGRAM_PROXY"))
+        or any(os.getenv(name) for name in (
+            "TELEGRAM_PROXY", "HTTPS_PROXY", "https_proxy",
+            "ALL_PROXY", "all_proxy"))
         or bool(os.getenv("NIPH_NO_DIRECT_PATH"))
     )
     try:
