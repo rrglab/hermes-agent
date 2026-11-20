@@ -2745,7 +2745,20 @@ class TelegramAdapter(TelegramContactMixin, TelegramHeldInboundMixin, TelegramRe
     async def _build_ptb_requests(self) -> tuple:
         """Build the (general, getUpdates) HTTPXRequest pair: fallback-IP transport, explicit proxy, or
         direct DNS; the getUpdates request is instrumented for polling-progress tracking."""
-        disable_fallback = os.getenv("HERMES_TELEGRAM_DISABLE_FALLBACK_IPS", "").strip().lower() in {"1", "true", "yes", "on"}
+        # Determine the protected route BEFORE fallback discovery: DoH itself
+        # is an outbound HTTP call, and must not escape a required proxy.
+        protected_egress = (
+            bool(self.config.extra.get("proxy_url"))
+            or any(os.getenv(name) for name in (
+                "TELEGRAM_PROXY", "HTTPS_PROXY", "https_proxy",
+                "ALL_PROXY", "all_proxy"))
+            or bool(os.getenv("NIPH_NO_DIRECT_PATH"))
+        )
+        disable_fallback = (
+            protected_egress
+            or os.getenv("HERMES_TELEGRAM_DISABLE_FALLBACK_IPS", "").strip().lower()
+            in {"1", "true", "yes", "on"}
+        )
         fallback_ips = [] if disable_fallback else self._fallback_ips()
         default_verify = platform_ssl_context()
         verify = telegram_verify(self.config.extra, default_verify)
@@ -2767,6 +2780,8 @@ class TelegramAdapter(TelegramContactMixin, TelegramHeldInboundMixin, TelegramRe
         proxy_url = self._ptb_proxy_url = resolve_proxy_url(
             "TELEGRAM_PROXY", target_hosts=proxy_target_hosts(self.config.extra.get("base_url"), fallback_ips),
             configured=self.config.extra.get("proxy_url"))
+        if protected_egress and not proxy_url:
+            raise RuntimeError("Telegram protected egress requires an available proxy")
 
         if fallback_ips and not proxy_url:
             logger.info("[%s] Telegram fallback IPs active: %s", self.name, ", ".join(fallback_ips))
