@@ -79,6 +79,22 @@ class TelegramProtectedEgressTests(unittest.TestCase):
                 factory("unused")
         bot.assert_not_called()
 
+    def test_https_proxy_environment_must_not_bypass(self):
+        factory, imports, bot, _, _ = fixture(proxy=None)
+        with patch.dict(sys.modules, imports), patch.dict(
+                os.environ, {"HTTPS_PROXY": "http://127.0.0.1:9911"}, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "protected transport unavailable"):
+                factory("unused")
+        bot.assert_not_called()
+
+    def test_all_proxy_environment_must_not_bypass(self):
+        factory, imports, bot, _, _ = fixture(proxy=None)
+        with patch.dict(sys.modules, imports), patch.dict(
+                os.environ, {"all_proxy": "http://127.0.0.1:9911"}, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "protected transport unavailable"):
+                factory("unused")
+        bot.assert_not_called()
+
     def test_explicit_proxy_is_passed_to_request(self):
         proxy = "http://127.0.0.1:9999"
         factory, imports, bot, _, build = fixture(proxy=proxy)
