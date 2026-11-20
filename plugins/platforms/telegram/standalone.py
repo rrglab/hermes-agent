@@ -120,30 +120,43 @@ def _telegram_fallback_ips(extra):
 
 
 def _telegram_bot(token, extra=None):
-    """Bot built by the gateway adapter's request builder (``telegram_network.build_ptb_requests``:
-    pool size, keepalive limits, timeouts, TLS verify): ``extra.base_url``/``base_file_url``
-    (self-hosted or compatible Bot API), TELEGRAM_PROXY / ``extra.proxy_url`` checked against the
-    server actually reached, else the fallback-IP transport on api.telegram.org. Falls back to PTB
-    defaults (same URLs) on failure."""
+    """Construct the native Telegram Bot without downgrading required proxy routing.
+
+    An explicit proxy or NIPH_NO_DIRECT_PATH must never fall back to PTB's
+    unrestricted direct transport, even if proxy detection or request
+    construction itself raises.
+    """
     from telegram import Bot
     from gateway.platforms.base import describe_proxy_error, resolve_proxy_url, safe_proxy_url_for_log
-    proxy = None
     extra = extra or {}
     from plugins.platforms.telegram.telegram_network import bot_api_urls
     base_url = extra.get("base_url")
     urls = bot_api_urls(extra)
+    proxy = None
+    strict_egress = (
+        bool(extra.get("proxy_url"))
+        or bool(os.getenv("TELEGRAM_PROXY"))
+        or bool(os.getenv("NIPH_NO_DIRECT_PATH"))
+    )
     try:
         from telegram.request import HTTPXRequest
         from plugins.platforms.telegram.telegram_network import build_ptb_requests, proxy_target_hosts, telegram_verify
-        fallback_ips = [] if base_url else _telegram_fallback_ips(extra)  # a custom server is reached directly
+        fallback_ips = [] if base_url else _telegram_fallback_ips(extra)
         proxy = resolve_proxy_url("TELEGRAM_PROXY", target_hosts=proxy_target_hosts(base_url, fallback_ips),
                                   configured=extra.get("proxy_url"))
+        if strict_egress and not proxy:
+            raise RuntimeError("Telegram proxy required for protected egress")
         if proxy:
             logger.info("send_message: standalone Telegram send routed through proxy %s", safe_proxy_url_for_log(proxy))
         request, updates_request = build_ptb_requests(HTTPXRequest, fallback_ips=fallback_ips, proxy_url=proxy,
                                                       verify=telegram_verify(extra, None))
         return Bot(token=token, request=request, get_updates_request=updates_request, **urls)
     except Exception as request_err:
+        # Under protected routing, fallback to Bot(token, **urls) is an
+        # unmediated network path and therefore a security violation.
+        if strict_egress or proxy:
+            logger.error("send_message: Telegram protected transport unavailable; refusing direct fallback")
+            raise RuntimeError("Telegram protected transport unavailable") from request_err
         logger.warning("send_message: failed to build the Telegram request (%s), using PTB defaults",
                        describe_proxy_error(request_err, proxy) or _sanitize_error_text(request_err),
                        exc_info=describe_proxy_error(request_err, proxy) is None)
