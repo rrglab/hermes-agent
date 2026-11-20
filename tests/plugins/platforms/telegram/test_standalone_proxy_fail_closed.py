@@ -41,6 +41,7 @@ def fixture(*, proxy=None, resolve_error=None, build_error=None):
                "gateway.platforms.base": base,
                "plugins.platforms.telegram.telegram_network": network}
     ns = {"os": os, "logger": logging.getLogger("niph-test"),
+          "_sanitize_error_text": lambda error: "redacted error",
           "_telegram_fallback_ips": lambda extra: []}
     exec(compile(module, str(SOURCE), "exec"), ns)
     return ns["_telegram_bot"], imports, bot, resolve, build
