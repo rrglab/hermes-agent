@@ -132,7 +132,6 @@ def _installed_versions_match(environment: Path, matched: dict[str, str]) -> boo
         result = subprocess.run(
             [str(executable), "-I", "-S", "-B", "-c", _INVENTORY, str(environment)],
             input=json.dumps(sorted(matched)), capture_output=True, text=True,
-            stdin=subprocess.PIPE if False else None,
             env={"PATH": os.environ.get("PATH", ""), "PYTHONDONTWRITEBYTECODE": "1"},
             timeout=15, check=False,
         )
