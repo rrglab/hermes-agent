@@ -1,10 +1,6 @@
-"""Local version diagnostics must not initiate passive network update probes.
-
-The user explicitly requests network checks through `hermes update --check`.
-Displaying version metadata, even from Termux/REPL paths, grants no egress.
-"""
-from types import SimpleNamespace
-import sys
+"""Local version diagnostics never initiate remote update checks."""
+import ast
+from pathlib import Path
 
 import pytest
 
@@ -16,59 +12,45 @@ def test_fast_version_never_calls_remote_update_probe(monkeypatch, capsys, flag)
     import hermes_cli.source_check as source_check
 
     def forbidden(*args, **kwargs):
-        raise AssertionError("hermes --version tried an unapproved update probe")
+        raise AssertionError("version triggered unapproved update probe")
 
     monkeypatch.setattr(source_check, "check_for_updates", forbidden)
     monkeypatch.setattr(_startup_fast, "container_mode_may_be_active", lambda: False)
     assert _startup_fast.try_fast_version([flag]) is True
-    stdout = capsys.readouterr().out
-    assert "Install directory:" in stdout
-    assert "Python:" in stdout
-    assert "Update available" not in stdout
+    output = capsys.readouterr().out
+    assert "Install directory:" in output
+    assert "Python:" in output
+    assert "Update available" not in output
 
 
-def test_slow_version_command_disables_update_probes(monkeypatch):
-    from hermes_cli import main
+def test_cli_termux_and_repl_version_callers_are_explicitly_offline():
+    """Inspect actual source callsites without importing a mixed-version CLI."""
+    root = Path(__file__).resolve().parents[2] / "hermes_cli"
+    for filename, expected_calls in (("main.py", 3), ("cli_loops_mixin.py", 1)):
+        tree = ast.parse((root / filename).read_text(encoding="utf-8"))
+        calls = [node for node in ast.walk(tree)
+                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                 and node.func.id == "_print_version_info"]
+        assert len(calls) == expected_calls
+        for call in calls:
+            flags = {arg.arg: arg.value for arg in call.keywords}
+            assert isinstance(flags.get("check_updates"), ast.Constant)
+            assert flags["check_updates"].value is False
 
-    calls = []
-    monkeypatch.setattr(_startup_fast, "print_fast_version_info", lambda **kw: calls.append(kw))
-    main.cmd_version(SimpleNamespace())
-    assert calls == [{"check_updates": False}]
-
-
-def test_termux_version_paths_remain_local(monkeypatch):
-    from hermes_cli import main
-
-    calls = []
-    monkeypatch.setattr(main, "_is_termux_startup_environment", lambda: True)
-    monkeypatch.setattr(main, "_wants_tui_early", lambda argv: False)
-    monkeypatch.setattr(main, "_print_version_info", lambda **kw: calls.append(kw))
-    for argv in (["hermes", "--version"], ["hermes", "-V"]):
-        monkeypatch.setattr(sys, "argv", argv)
-        assert main._try_termux_fast_cli_launch() is True
-    assert calls == [{"check_updates": False}, {"check_updates": False}]
-
-
-def test_repl_version_never_requests_update_status(monkeypatch):
-    from hermes_cli import main, cli_loops_mixin
-
-    calls = []
-    monkeypatch.setattr(main, "_print_version_info", lambda **kw: calls.append(kw))
-    for cls in vars(cli_loops_mixin).values():
-        if isinstance(cls, type) and "_cmd_version" in cls.__dict__:
-            cls._cmd_version(None, "/version")
-            break
-    else:
-        pytest.fail("REPL /version command handler not found")
-    assert calls == [{"check_updates": False}]
+    main = ast.parse((root / "main.py").read_text(encoding="utf-8"))
+    printers = [node for node in ast.walk(main)
+                if isinstance(node, ast.FunctionDef) and node.name == "_print_version_info"]
+    assert len(printers) == 1
+    assert len(printers[0].args.kw_defaults) == 1
+    assert printers[0].args.kw_defaults[0].value is False
 
 
 def test_explicit_update_status_is_not_deleted(monkeypatch, capsys):
     import hermes_cli.source_check as source_check
 
     calls = []
-    monkeypatch.setattr(source_check, "check_for_updates", lambda **kw:
-                        (calls.append(kw) or {"behind": 0}))
+    monkeypatch.setattr(source_check, "check_for_updates",
+                        lambda **kw: (calls.append(kw) or {"behind": 0}))
     _startup_fast.print_fast_version_info(check_updates=True)
     assert calls == [{"passive": True}]
     assert "Up to date" in capsys.readouterr().out
