@@ -81,6 +81,18 @@ def test_incompatible_or_unqualified_requirement_fails_closed(tmp_path, monkeypa
     assert not reusable_manifest_selection(package, proposal, fact, [], {"plugin_dirs": proposal.members})
 
 
+def test_source_requirements_cannot_disappear_from_the_admission_check(tmp_path, monkeypatch):
+    package, proposal, fact = _scenario(
+        tmp_path, monkeypatch, requirements=(
+            "cryptography>=41,<51",
+            "unreviewed @ https://example.invalid/unreviewed.whl",
+        ))
+    # read_python_declaration deliberately filters untrusted direct URLs,
+    # but admission must never interpret the surviving subset as complete.
+    assert not reusable_manifest_selection(
+        package, proposal, fact, [], {"plugin_dirs": proposal.members})
+
+
 def test_stale_state_and_multiple_members_cannot_reuse(tmp_path, monkeypatch):
     package, proposal, fact = _scenario(tmp_path, monkeypatch)
     bad = dict(fact, stamp="stale")
