@@ -48,7 +48,7 @@ def _scenario(tmp_path, monkeypatch, *, requirements=("cryptography>=41,<51",)):
     manifest.write_text(
         "name: candidate\nkind: standalone\n" +
         "python_dependencies:\n" +
-        "".join(f"  - '{spec}'\n" for spec in requirements)
+        "".join(f"  - {json.dumps(spec)}\n" for spec in requirements)
     )
     proposal = object.__new__(PluginSelection)
     proposal.members = [manifest.parent]
@@ -58,7 +58,7 @@ def _scenario(tmp_path, monkeypatch, *, requirements=("cryptography>=41,<51",)):
     )
     monkeypatch.setattr(pm.environments, "install_state_dir", lambda project: state)
     monkeypatch.setattr(pm.workspace, "build_member_dirs", lambda enabled: [])
-    monkeypatch.setattr(pm.install, "_runtime_state_matches", lambda fact, stamp: stamp == "baseline")
+    monkeypatch.setattr(pm.install, "_runtime_state_matches", lambda fact, stamp: fact.get("stamp") == stamp == "baseline")
     monkeypatch.setattr("pm.manifest_reuse._installed_versions_match",
                         lambda env, versions: versions == {"cryptography": "50.0.2"})
     fact = {"stamp": "baseline", "extras": [],
