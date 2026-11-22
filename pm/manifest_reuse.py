@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 import tomllib
 from pathlib import Path
@@ -51,7 +50,9 @@ def reusable_manifest_selection(package: Any, change: Any, fact: dict,
     if declaration.pyproject is not None or declaration.external or not declaration.installs_packages:
         return False
     specs = declaration.install_requirements
-    if not specs:
+    # install_requirements filters direct-URL/self references. Such declarations
+    # must never be silently treated as satisfied by a different dependency set.
+    if not specs or len(specs) != len(declaration.requirements):
         return False
 
     environment = Path(fact.get("environment", "")).resolve()
