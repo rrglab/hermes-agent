@@ -4,7 +4,7 @@
 Usage:
     hermes                     # Interactive chat (default)
     hermes chat / gateway / setup / status / cron / doctor / update / ...
-    hermes --version           # Show version and update status
+    hermes --version           # Show local version information (no network check)
     hermes <cmd> --help        # Per-command help
 """
 
