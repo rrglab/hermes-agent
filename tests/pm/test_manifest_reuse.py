@@ -97,6 +97,9 @@ def test_stale_state_and_multiple_members_cannot_reuse(tmp_path, monkeypatch):
     package, proposal, fact = _scenario(tmp_path, monkeypatch)
     bad = dict(fact, stamp="stale")
     assert not reusable_manifest_selection(package, proposal, bad, [], {"plugin_dirs": proposal.members})
+    for key in ("environment", "resolved_lock"):
+        bad = {**fact, key: None}
+        assert not reusable_manifest_selection(package, proposal, bad, [], {"plugin_dirs": proposal.members})
     assert not reusable_manifest_selection(package, proposal, fact, ["new-extra"], {"plugin_dirs": proposal.members})
     other = tmp_path / "other"
     other.mkdir()
