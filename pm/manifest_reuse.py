@@ -35,6 +35,9 @@ def reusable_manifest_selection(package: Any, change: Any, fact: dict,
         return False
     if not isinstance(fact.get("extras"), list) or sorted(fact["extras"]) != sorted(enabled):
         return False
+    if any(not isinstance(fact.get(k), str) or not fact[k]
+           for k in ("environment", "resolved_lock")):
+        return False
     project = package.project_root()
     old = member_sources(build_member_dirs(enabled))
     new = member_sources(candidate_inputs["plugin_dirs"])
